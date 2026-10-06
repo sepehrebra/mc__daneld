@@ -1,0 +1,3 @@
+Migration scripts for the Farm Management API.
+
+Run `alembic upgrade head` after installing dependencies.
