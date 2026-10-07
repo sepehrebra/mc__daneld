@@ -3,8 +3,8 @@
 ## اجرای محلی
 
 ```powershell
-py -3.13 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+py -3.13 -m venv .venv313
+.\.venv313\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 uvicorn app.main:app --reload
@@ -23,6 +23,16 @@ uvicorn app.main:app --reload
 
 شماره به قالب بین‌المللی E.164 ذخیره می‌شود. پاسخ موفق `201` و بدون رمز یا هش رمز است؛
 شماره یا ایمیل تکراری `409` و ورودی نامعتبر `422` برمی‌گرداند.
+
+## ورود و خروج (گام ۴)
+
+- `POST /api/v1/auth/login` با JSON شامل `phone` و `password`، توکن Bearer و `expires_at` برمی‌گرداند.
+- `GET /api/v1/auth/me` مشخصات کاربر فعلی را برمی‌گرداند.
+- `POST /api/v1/auth/logout` نشست فعلی را باطل می‌کند و پاسخ `204` دارد.
+
+برای دو مسیر آخر، هدر `Authorization: Bearer <access_token>` را بفرستید.
+درخواست بدون توکن معتبر یا با رمز نادرست `401` می‌گیرد. عمر پیش‌فرض نشست ۲۴ ساعت است
+و با `SESSION_TTL_HOURS` تنظیم می‌شود. فقط هش توکن در دیتابیس ذخیره می‌شود.
 
 ## Migration
 

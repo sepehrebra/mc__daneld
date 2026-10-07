@@ -6,8 +6,19 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import CheckConstraint, Engine, Integer, Text, UniqueConstraint, create_engine, event
+from sqlalchemy import (
+    CheckConstraint,
+    Engine,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    event,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
@@ -15,6 +26,7 @@ class Settings(BaseSettings):
     """تنظیمات محیط اجرا."""
 
     database_url: str = "sqlite:///./data/farm.db"
+    session_ttl_hours: int = Field(default=24, gt=0, le=720)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -75,6 +87,26 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(Text, nullable=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_auth_sessions_token_hash"),
+        Index("ix_auth_sessions_user_id", "user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[str] = mapped_column(Text, nullable=False)
+    revoked_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
 

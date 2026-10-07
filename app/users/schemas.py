@@ -5,6 +5,19 @@ from phonenumbers import PhoneNumberFormat, PhoneNumberType
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
+def normalize_mobile_number(value: str) -> str:
+    try:
+        parsed = phonenumbers.parse(value, "IR")
+    except phonenumbers.NumberParseException as error:
+        raise ValueError("Invalid mobile number.") from error
+
+    if not phonenumbers.is_valid_number(parsed) or (
+        phonenumbers.number_type(parsed) != PhoneNumberType.MOBILE
+    ):
+        raise ValueError("Invalid mobile number.")
+    return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+
+
 class UserRegister(BaseModel):
     full_name: str = Field(min_length=1, max_length=150)
     phone: str
@@ -22,16 +35,7 @@ class UserRegister(BaseModel):
     @field_validator("phone")
     @classmethod
     def normalize_phone(cls, value: str) -> str:
-        try:
-            parsed = phonenumbers.parse(value, "IR")
-        except phonenumbers.NumberParseException as error:
-            raise ValueError("Invalid mobile number.") from error
-
-        if not phonenumbers.is_valid_number(parsed) or (
-            phonenumbers.number_type(parsed) != PhoneNumberType.MOBILE
-        ):
-            raise ValueError("Invalid mobile number.")
-        return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+        return normalize_mobile_number(value)
 
     @field_validator("email")
     @classmethod
@@ -49,3 +53,19 @@ class UserPublic(BaseModel):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class UserLogin(BaseModel):
+    phone: str
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value: str) -> str:
+        return normalize_mobile_number(value)
+
+
+class LoginResult(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: str

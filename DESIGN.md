@@ -29,6 +29,14 @@
 - `email` اختیاری و یکتا است؛ `NULL` بودن آن مجاز است.
 - `is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1))`.
 
+### `auth_sessions`
+
+`id`, `user_id`, `token_hash`, `expires_at`, `revoked_at`, `created_at`, `updated_at`
+
+- `user_id` کلید خارجی اجباری به `users.id` است.
+- فقط هش SHA-256 توکن تصادفی و یکتا ذخیره می‌شود؛ توکن خام هنگام ورود به کاربر برگردانده می‌شود.
+- نشست ۲۴ ساعت اعتبار دارد (قابل تنظیم)؛ خروج `revoked_at` را ثبت می‌کند و دسترسی همان توکن قطع می‌شود.
+
 ### `farms`
 
 `id`, `owner_id`, `name`, `province`, `city`, `address`, `latitude`, `longitude`, `timezone`, `description`, `created_at`, `updated_at`
@@ -83,6 +91,7 @@
 ```mermaid
 erDiagram
   USERS ||--o{ FARMS : owns
+  USERS ||--o{ AUTH_SESSIONS : logs_in
   FARMS ||--o{ PLOTS : contains
   PLOTS ||--o{ CROP_SEASONS : has
   PLOTS ||--o{ OPERATIONS : has
