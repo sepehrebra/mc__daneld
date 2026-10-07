@@ -15,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Float,
+    REAL,
     Text,
     UniqueConstraint,
     create_engine,
@@ -140,6 +141,30 @@ class Farm(Base):
     timezone: Mapped[str] = mapped_column(
         Text, nullable=False, default="Asia/Tehran", server_default="Asia/Tehran"
     )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
+
+
+class Plot(Base):
+    __tablename__ = "plots"
+    __table_args__ = (
+        UniqueConstraint("farm_id", "name", name="uq_plots_farm_name"),
+        UniqueConstraint("farm_id", "code", name="uq_plots_farm_code"),
+        CheckConstraint("area_m2 > 0", name="ck_plots_area_positive"),
+        Index("ix_plots_farm_id", "farm_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    farm_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("farms.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    area_m2: Mapped[float] = mapped_column(REAL, nullable=False)
+    soil_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
