@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Float,
     Text,
     UniqueConstraint,
     create_engine,
@@ -107,6 +108,39 @@ class AuthSession(Base):
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     expires_at: Mapped[str] = mapped_column(Text, nullable=False)
     revoked_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
+
+
+class Farm(Base):
+    __tablename__ = "farms"
+    __table_args__ = (
+        CheckConstraint("latitude BETWEEN -90 AND 90", name="ck_farms_latitude"),
+        CheckConstraint("longitude BETWEEN -180 AND 180", name="ck_farms_longitude"),
+        CheckConstraint(
+            "(latitude IS NULL AND longitude IS NULL) OR "
+            "(latitude IS NOT NULL AND longitude IS NOT NULL)",
+            name="ck_farms_coordinates_pair",
+        ),
+        Index("ix_farms_owner_id", "owner_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    owner_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    province: Mapped[str | None] = mapped_column(Text, nullable=True)
+    city: Mapped[str | None] = mapped_column(Text, nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    timezone: Mapped[str] = mapped_column(
+        Text, nullable=False, default="Asia/Tehran", server_default="Asia/Tehran"
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
 

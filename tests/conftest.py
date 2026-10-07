@@ -2,7 +2,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -15,6 +15,11 @@ def registration_db() -> Iterator[tuple[TestClient, sessionmaker[Session]]]:
     database_engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+
+    @event.listens_for(database_engine, "connect")
+    def enable_foreign_keys(dbapi_connection, _connection_record):
+        dbapi_connection.execute("PRAGMA foreign_keys = ON")
+
     Base.metadata.create_all(database_engine)
     session_factory = sessionmaker(bind=database_engine, expire_on_commit=False)
 
