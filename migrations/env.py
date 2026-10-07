@@ -3,7 +3,6 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.users.models import User  # noqa: F401 - registers table metadata
 from db import Base, get_settings
 
 config = context.config

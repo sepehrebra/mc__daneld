@@ -1,13 +1,14 @@
-"""تنظیمات و اتصال مشترک SQLite برای بک‌اند."""
+"""تنظیمات، اتصال و مدل‌های دیتابیس SQLite."""
 
+from collections.abc import Iterator
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from collections.abc import Iterator
-
-from sqlalchemy import Engine, create_engine, event
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import CheckConstraint, Engine, Integer, Text, UniqueConstraint, create_engine, event
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
 class Settings(BaseSettings):
@@ -52,6 +53,30 @@ engine = create_database_engine()
 
 class Base(DeclarativeBase):
     pass
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("phone", name="uq_users_phone"),
+        UniqueConstraint("email", name="uq_users_email"),
+        CheckConstraint("is_active IN (0, 1)", name="ck_users_is_active"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    full_name: Mapped[str] = mapped_column(Text, nullable=False)
+    phone: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
 
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
