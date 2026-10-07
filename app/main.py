@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.crop_seasons.router import router as crop_seasons_router
 from app.farms.router import router as farms_router
+from app.operations.router import router as operations_router
 from app.plots.router import router as plots_router
 from app.users.router import router as users_router
 from db import engine
@@ -13,6 +14,7 @@ app.include_router(users_router)
 app.include_router(farms_router)
 app.include_router(plots_router)
 app.include_router(crop_seasons_router)
+app.include_router(operations_router)
 
 
 @app.get("/health", tags=["system"])

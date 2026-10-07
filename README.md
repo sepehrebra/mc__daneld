@@ -86,6 +86,32 @@ uvicorn app.main:app --reload
 پیش از آن باشد. وضعیت‌ها: `planned`، `active`، `completed` و `cancelled`.
 دوره‌های هم‌پوشان مجازند. `plot_id` از مسیر گرفته می‌شود و قابل ویرایش نیست.
 
+## ثبت فعالیت (گام ۸)
+
+همهٔ مسیرها به توکن Bearer نیاز دارند:
+
+| روش | مسیر | کاربرد |
+| --- | --- | --- |
+| `POST` | `/api/v1/plots/{plot_id}/operations` | ثبت فعالیت برای قطعهٔ خود |
+| `GET` | `/api/v1/plots/{plot_id}/operations` | فهرست فعالیت‌های قطعه |
+| `GET` | `/api/v1/operations` | فهرست فعالیت‌های همهٔ قطعه‌های خود |
+| `GET` | `/api/v1/operations/{operation_id}` | مشاهدهٔ یک فعالیت |
+
+بدنهٔ ثبت: `title`، `operation_type` و `scheduled_date` اجباری‌اند؛
+`description`، `scheduled_time` و `crop_season_id` اختیاری‌اند. نوع فعالیت یکی از
+`planting`، `irrigation`، `fertilizing`، `spraying`، `harvesting` و `other` است.
+تاریخ میلادی با قالب `YYYY-MM-DD` و ساعت محلی قطعه با قالب `HH:MM:SS` ارسال می‌شود؛
+تبدیل تاریخ شمسی در فرانت‌اند انجام می‌شود. نمونه:
+
+```json
+{"title":"آبیاری","operation_type":"irrigation","scheduled_date":"2026-10-15","scheduled_time":"08:30:00"}
+```
+
+در هر دو مسیر فهرست می‌توان `date_from` و `date_to` را به‌عنوان پارامتر query فرستاد؛
+دو سر بازه شامل می‌شوند. در فهرست کلی `plot_id` نیز اختیاری است.
+دورهٔ کشت، اگر مشخص شده باشد، باید متعلق به همان قطعه باشد. فعالیت تازه همیشه با وضعیت
+`planned` و `completed_at` خالی ساخته می‌شود؛ تغییر وضعیت و زمان انجام در گام ۹ پیاده‌سازی خواهد شد.
+
 ## Migration
 
 ```powershell

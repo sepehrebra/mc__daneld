@@ -200,6 +200,54 @@ class CropSeason(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
 
 
+class Operation(Base):
+    __tablename__ = "operations"
+    __table_args__ = (
+        CheckConstraint(
+            "operation_type IN ('planting', 'irrigation', 'fertilizing', "
+            "'spraying', 'harvesting', 'other')",
+            name="ck_operations_type",
+        ),
+        CheckConstraint(
+            "status IN ('planned', 'in_progress', 'completed', 'cancelled')",
+            name="ck_operations_status",
+        ),
+        CheckConstraint(
+            "(status = 'completed' AND completed_at IS NOT NULL) OR "
+            "(status != 'completed' AND completed_at IS NULL)",
+            name="ck_operations_completion_time",
+        ),
+        Index("ix_operations_plot_date", "plot_id", "scheduled_date"),
+        Index("ix_operations_crop_season_id", "crop_season_id"),
+        Index("ix_operations_created_by", "created_by"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    plot_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("plots.id", ondelete="RESTRICT"), nullable=False
+    )
+    crop_season_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("crop_seasons.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_by: Mapped[str] = mapped_column(
+        Text, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    operation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_date: Mapped[str] = mapped_column(Text, nullable=False)
+    scheduled_time: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="planned", server_default="planned"
+    )
+    result_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
