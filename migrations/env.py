@@ -3,7 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from db import get_settings
+from app.users.models import User  # noqa: F401 - registers table metadata
+from db import Base, get_settings
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
@@ -11,8 +12,7 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Domain models are added in later project steps.
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -34,7 +34,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
+    with connectable.begin() as connection:
         connection.exec_driver_sql("PRAGMA foreign_keys = ON")
         context.configure(connection=connection, target_metadata=target_metadata)
 

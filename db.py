@@ -4,7 +4,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from collections.abc import Iterator
+
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
 class Settings(BaseSettings):
@@ -45,3 +48,15 @@ def create_database_engine(database_url: str | None = None) -> Engine:
 
 
 engine = create_database_engine()
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def get_db() -> Iterator[Session]:
+    with SessionLocal() as session:
+        yield session

@@ -2,9 +2,11 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.users.router import router as users_router
 from db import engine
 
 app = FastAPI(title="Farm Management API", version="0.1.0")
+app.include_router(users_router)
 
 
 @app.get("/health", tags=["system"])
