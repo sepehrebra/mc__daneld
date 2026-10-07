@@ -33,3 +33,8 @@ alembic upgrade head
 فایل دیتابیس پیش‌فرض در `data/farm.db` است و در Git ثبت نمی‌شود. مسیر آن را با متغیر محیطی `DATABASE_URL` تغییر دهید.
 
 تعریف جدول‌های دیتابیس در `db.py` نگهداری می‌شود. هر تغییر ساختاری علاوه بر مدل، به Migration جدید نیاز دارد.
+
+اگر VS Code روی `db.py` خطای import نشان داد، از فرمان **Python: Select Interpreter**
+مفسر `.venv313/Scripts/python.exe` را انتخاب کنید. تنظیم پیشنهادی آن در
+`.vscode/settings.json` نیز ثبت شده است. Python پیش‌فرض این رایانه 3.14 آزمایشی است؛
+این پروژه با Python 3.12 یا 3.13 اجرا می‌شود.
