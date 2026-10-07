@@ -170,6 +170,36 @@ class Plot(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
 
 
+class CropSeason(Base):
+    __tablename__ = "crop_seasons"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('planned', 'active', 'completed', 'cancelled')",
+            name="ck_crop_seasons_status",
+        ),
+        Index("ix_crop_seasons_plot_id", "plot_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    plot_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("plots.id", ondelete="RESTRICT"), nullable=False
+    )
+    crop_name: Mapped[str] = mapped_column(Text, nullable=False)
+    variety: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_date: Mapped[str] = mapped_column(Text, nullable=False)
+    actual_start_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_end_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actual_end_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="planned", server_default="planned"
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

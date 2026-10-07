@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.crop_seasons.router import router as crop_seasons_router
 from app.farms.router import router as farms_router
 from app.plots.router import router as plots_router
 from app.users.router import router as users_router
@@ -11,6 +12,7 @@ app = FastAPI(title="Farm Management API", version="0.1.0")
 app.include_router(users_router)
 app.include_router(farms_router)
 app.include_router(plots_router)
+app.include_router(crop_seasons_router)
 
 
 @app.get("/health", tags=["system"])
