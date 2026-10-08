@@ -248,6 +248,45 @@ class Operation(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
 
 
+class Reminder(Base):
+    __tablename__ = "reminders"
+    __table_args__ = (
+        CheckConstraint("channel = 'in_app'", name="ck_reminders_channel"),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'sent', 'failed', 'cancelled')",
+            name="ck_reminders_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_reminders_attempt_count"),
+        Index("ix_reminders_operation_id", "operation_id"),
+        Index("ix_reminders_recipient_status_due", "recipient_id", "status", "remind_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, nullable=False, default=lambda: str(uuid4())
+    )
+    operation_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("operations.id", ondelete="RESTRICT"), nullable=False
+    )
+    recipient_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    remind_at: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[str] = mapped_column(
+        Text, nullable=False, default="in_app", server_default="in_app"
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="pending", server_default="pending"
+    )
+    sent_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    read_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now, onupdate=utc_now)
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

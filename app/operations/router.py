@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.crop_seasons.schemas import valid_date
 from app.operations.schemas import OperationCreate, OperationPublic, OperationUpdate
 from app.plots.router import owned_plot
+from app.reminders.service import cancel_active_reminders
 from app.users.auth import AuthContext, require_auth
 from db import CropSeason, Farm, Operation, Plot, get_db, utc_now
 
@@ -175,12 +176,18 @@ def update_operation(
     if all(getattr(operation, field) == value for field, value in changes.items()):
         return operation
 
+    schedule_changed = any(
+        field in changes and changes[field] != getattr(operation, field)
+        for field in ("scheduled_date", "scheduled_time")
+    )
     now = utc_now()
     for field, value in changes.items():
         setattr(operation, field, value)
     if target_status == "completed" and operation.completed_at is None:
         operation.completed_at = now
     operation.updated_at = now
+    if schedule_changed or target_status in {"completed", "cancelled"}:
+        cancel_active_reminders(session, operation.id, now)
     session.commit()
     session.refresh(operation)
     return operation
