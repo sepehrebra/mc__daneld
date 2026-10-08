@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.crop_seasons.schemas import valid_date
-from app.operations.schemas import OperationCreate, OperationPublic
+from app.operations.schemas import OperationCreate, OperationPublic, OperationUpdate
 from app.plots.router import owned_plot
 from app.users.auth import AuthContext, require_auth
 from db import CropSeason, Farm, Operation, Plot, get_db, utc_now
@@ -142,3 +142,45 @@ def get_operation(
     session: Annotated[Session, Depends(get_db)],
 ) -> Operation:
     return owned_operation(operation_id, auth.user.id, session)
+
+
+@router.patch("/operations/{operation_id}", response_model=OperationPublic)
+def update_operation(
+    operation_id: UUID,
+    payload: OperationUpdate,
+    auth: Annotated[AuthContext, Depends(require_auth)],
+    session: Annotated[Session, Depends(get_db)],
+) -> Operation:
+    operation = owned_operation(operation_id, auth.user.id, session)
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        return operation
+
+    target_status = changes.get("status", operation.status)
+    if target_status != operation.status:
+        allowed = {
+            "planned": {"in_progress", "completed", "cancelled"},
+            "in_progress": {"completed", "cancelled"},
+        }
+        if target_status not in allowed.get(operation.status, set()):
+            raise HTTPException(status_code=409, detail="Invalid operation status transition.")
+
+    rescheduling = "scheduled_date" in changes or "scheduled_time" in changes
+    if rescheduling and target_status in {"completed", "cancelled"}:
+        raise HTTPException(status_code=409, detail="Finished operations cannot be rescheduled.")
+    if "result_notes" in changes and target_status != "completed":
+        raise HTTPException(status_code=422, detail="Result notes require a completed operation.")
+    if operation.status == "cancelled" and changes != {"status": "cancelled"}:
+        raise HTTPException(status_code=409, detail="Cancelled operations cannot be changed.")
+    if all(getattr(operation, field) == value for field, value in changes.items()):
+        return operation
+
+    now = utc_now()
+    for field, value in changes.items():
+        setattr(operation, field, value)
+    if target_status == "completed" and operation.completed_at is None:
+        operation.completed_at = now
+    operation.updated_at = now
+    session.commit()
+    session.refresh(operation)
+    return operation

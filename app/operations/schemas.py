@@ -44,6 +44,36 @@ class OperationCreate(BaseModel):
         return value
 
 
+class OperationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_date: str | None = None
+    scheduled_time: str | None = None
+    status: OperationStatus | None = None
+    result_notes: str | None = None
+
+    @field_validator("scheduled_date")
+    @classmethod
+    def check_date(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("Scheduled date cannot be null.")
+        return valid_date(value)
+
+    @field_validator("scheduled_time")
+    @classmethod
+    def check_time(cls, value: str | None) -> str | None:
+        if value is not None and not LOCAL_TIME_PATTERN.fullmatch(value):
+            raise ValueError("Time must use HH:MM:SS format.")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def check_status(cls, value: OperationStatus | None) -> OperationStatus:
+        if value is None:
+            raise ValueError("Status cannot be null.")
+        return value
+
+
 class OperationPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 
 from db import Operation
@@ -122,3 +124,105 @@ def test_list_filters_are_inclusive_and_owner_scoped(registration_db) -> None:
     assert client.get(f"/api/v1/operations/{ids[0]}", headers=stranger).status_code == 404
     assert client.get(f"/api/v1/plots/{plot_id}/operations", headers=stranger).status_code == 404
     assert client.get("/api/v1/operations", headers=stranger, params={"plot_id": plot_id}).status_code == 404
+
+
+def test_reschedule_start_and_complete_records_actual_utc_time(registration_db) -> None:
+    client, session_factory = registration_db
+    headers = auth_headers(client, "09123456789")
+    plot_id = create_plot(client, headers)
+    created = make_operation(client, headers, plot_id, scheduled_time="08:30:00")
+    assert created.status_code == 201
+    operation_id = created.json()["id"]
+    path = f"/api/v1/operations/{operation_id}"
+
+    rescheduled = client.patch(
+        path, headers=headers,
+        json={"scheduled_date": "2026-10-16", "scheduled_time": None},
+    )
+    assert rescheduled.status_code == 200
+    assert rescheduled.json()["scheduled_date"] == "2026-10-16"
+    assert rescheduled.json()["scheduled_time"] is None
+    assert rescheduled.json()["status"] == "planned"
+    assert rescheduled.json()["completed_at"] is None
+    assert client.get("/api/v1/operations", headers=headers, params={"date_from": "2026-10-16"}).json()[0]["id"] == operation_id
+
+    started = client.patch(path, headers=headers, json={"status": "in_progress"})
+    assert started.status_code == 200
+    assert started.json()["status"] == "in_progress"
+    assert started.json()["completed_at"] is None
+    before = datetime.now(timezone.utc)
+    completed = client.patch(
+        path, headers=headers,
+        json={"status": "completed", "result_notes": "Watering completed"},
+    )
+    after = datetime.now(timezone.utc)
+    assert completed.status_code == 200
+    body = completed.json()
+    assert body["status"] == "completed"
+    assert body["result_notes"] == "Watering completed"
+    actual = datetime.strptime(body["completed_at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+    assert before <= actual <= after
+    assert body["updated_at"] == body["completed_at"]
+    assert body["scheduled_date"] == "2026-10-16"
+    with session_factory() as session:
+        stored = session.scalar(select(Operation).where(Operation.id == operation_id))
+        assert stored is not None and stored.completed_at == body["completed_at"]
+
+    repeated = client.patch(path, headers=headers, json={"status": "completed"})
+    assert repeated.status_code == 200
+    assert repeated.json()["completed_at"] == body["completed_at"]
+    corrected = client.patch(path, headers=headers, json={"result_notes": "Done"})
+    assert corrected.status_code == 200
+    assert corrected.json()["result_notes"] == "Done"
+    assert corrected.json()["completed_at"] == body["completed_at"]
+
+
+def test_cancel_and_direct_completion_and_invalid_transitions(registration_db) -> None:
+    client, _ = registration_db
+    headers = auth_headers(client, "09123456789")
+    plot_id = create_plot(client, headers)
+    first = make_operation(client, headers, plot_id)
+    second = make_operation(client, headers, plot_id)
+    assert first.status_code == second.status_code == 201
+    first_path = f"/api/v1/operations/{first.json()['id']}"
+    second_path = f"/api/v1/operations/{second.json()['id']}"
+
+    cancelled = client.patch(first_path, headers=headers, json={"status": "cancelled"})
+    assert cancelled.status_code == 200
+    assert cancelled.json()["completed_at"] is None
+    assert client.patch(first_path, headers=headers, json={"status": "in_progress"}).status_code == 409
+    assert client.patch(first_path, headers=headers, json={"scheduled_date": "2026-10-17"}).status_code == 409
+    assert client.patch(first_path, headers=headers, json={"result_notes": "No"}).status_code == 422
+
+    completed = client.patch(second_path, headers=headers, json={"status": "completed"})
+    assert completed.status_code == 200
+    assert completed.json()["completed_at"] is not None
+    assert client.patch(second_path, headers=headers, json={"status": "cancelled"}).status_code == 409
+    assert client.patch(second_path, headers=headers, json={"scheduled_time": None}).status_code == 409
+    assert client.patch(second_path, headers=headers, json={"completed_at": None}).status_code == 422
+
+
+def test_update_validation_and_owner_scope(registration_db) -> None:
+    client, _ = registration_db
+    owner = auth_headers(client, "09123456789")
+    stranger = auth_headers(client, "09123456788")
+    plot_id = create_plot(client, owner)
+    created = make_operation(client, owner, plot_id)
+    assert created.status_code == 201
+    path = f"/api/v1/operations/{created.json()['id']}"
+    assert client.patch(path, json={"status": "completed"}).status_code == 401
+    assert client.patch(path, headers=stranger, json={"status": "completed"}).status_code == 404
+    for payload in (
+        {"scheduled_date": None},
+        {"scheduled_date": "2026-02-29"},
+        {"scheduled_time": "24:00:00"},
+        {"status": None},
+        {"status": "unknown"},
+        {"result_notes": "premature"},
+        {"created_by": created.json()["created_by"]},
+        {"plot_id": plot_id},
+    ):
+        assert client.patch(path, headers=owner, json=payload).status_code == 422
+    assert client.get(path, headers=owner).json()["status"] == "planned"
+    assert client.patch(path, headers=owner, json={"status": "in_progress"}).status_code == 200
+    assert client.patch(path, headers=owner, json={"status": "planned"}).status_code == 409
