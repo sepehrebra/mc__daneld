@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* ============================================================
+   پالت رنگ و فونت: فقط همین‌جا را عوض کن.
+   کلاس‌های Tailwind مثل bg-primary و text-soil خودکار از این‌ها ساخته می‌شوند.
+   ============================================================ */
+@theme {
+  --font-sans: "Vazirmatn", system-ui, sans-serif;
+
+  --color-primary: #2f6b3a;       /* سبز برگ: دکمه‌ها و لینک‌ها */
+  --color-primary-dark: #24542d;  /* حالت hover */
+  --color-primary-soft: #e1ecd8;  /* سبز خیلی روشن: پس‌زمینه‌های ملایم */
+  --color-soil: #7a5c3e;          /* خاک: متن فرعی و جزئیات */
+  --color-wheat: #d9b45b;         /* گندم: تاکید و فوکوس */
+  --color-bg: #f1f5ea;            /* پس‌زمینه صفحه */
+  --color-surface: #ffffff;       /* کارت‌ها و فرم‌ها */
+  --color-ink: #243020;           /* متن اصلی */
+  --color-muted: #66715c;         /* متن کم‌رنگ */
+  --color-line: #d5ddc9;          /* خط دور فیلدها */
+  --color-danger: #b3422f;        /* خطا */
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/* خطوط شیار زمین: پس‌زمینه ملایم صفحه‌های ورود و ثبت‌نام */
+.furrows {
+  background-image: repeating-linear-gradient(
+    172deg,
+    transparent 0 26px,
+    var(--color-primary-soft) 26px 29px
+  );
+}
