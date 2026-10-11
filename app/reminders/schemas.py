@@ -45,3 +45,12 @@ class ReminderPublic(BaseModel):
     attempt_count: int
     created_at: str
     updated_at: str
+
+
+class NotificationPublic(BaseModel):
+    id: UUID
+    operation_id: UUID
+    operation_title: str
+    remind_at: str
+    sent_at: str
+    read_at: str | None

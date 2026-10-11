@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./data/farm.db"
     session_ttl_hours: int = Field(default=24, gt=0, le=720)
+    cors_origins: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
