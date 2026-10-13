@@ -7,6 +7,10 @@ import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Placeholder from './pages/Placeholder.jsx'
+import FarmNew from './pages/FarmNew.jsx'
+import FarmDetail from './pages/FarmDetail.jsx'
+import OperationDetail from './pages/OperationDetail.jsx'
+import OperationsPage from './pages/OperationsPage.jsx'
 
 // صفحه‌ای که لازم است کاربر وارد شده باشد
 const Private = (title) => (
@@ -24,12 +28,13 @@ export default function App() {
 
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
 
-        {/* صفحه‌های بعدی: فعلاً موقت */}
+        {/* تقویم هنوز صفحهٔ موقت است. */}
         <Route path="/calendar" element={Private('تقویم کشاورزی')} />
-        <Route path="/operations/recent" element={Private('عملیات‌های اخیر')} />
-        <Route path="/operations/search" element={Private('نتایج جستجو')} />
-        <Route path="/farms/new" element={Private('افزودن مزرعه')} />
-        <Route path="/farms/:id" element={Private('مزرعه')} />
+        <Route path="/operations/recent" element={<RequireAuth><OperationsPage /></RequireAuth>} />
+        <Route path="/operations/search" element={<RequireAuth><OperationsPage /></RequireAuth>} />
+        <Route path="/operations/:id" element={<RequireAuth><OperationDetail /></RequireAuth>} />
+        <Route path="/farms/new" element={<RequireAuth><FarmNew /></RequireAuth>} />
+        <Route path="/farms/:id" element={<RequireAuth><FarmDetail /></RequireAuth>} />
       </Routes>
       <Footer />
     </div>

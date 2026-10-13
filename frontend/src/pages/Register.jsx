@@ -1,15 +1,25 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import AuthCard from '../components/AuthCard.jsx'
 import Field from '../components/Field.jsx'
 import Button from '../components/Button.jsx'
+import { api } from '../api.js'
 
 export default function Register() {
+  const navigate = useNavigate()
+  const [serverError, setServerError] = useState('')
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm()
 
   const onSubmit = async (data) => {
-    // TODO: اتصال به جنگو، مثلاً POST به /api/auth/register/
-    console.log('register', data)
+    setServerError('')
+    try {
+      await api.register(data)
+      await api.login(data)
+      navigate('/dashboard')
+    } catch (error) {
+      setServerError(error.message)
+    }
   }
 
   return (
@@ -60,6 +70,7 @@ export default function Register() {
             validate: (v) => v === watch('password') || 'رمزها یکسان نیستند',
           })}
         />
+        {serverError && <p className="text-sm text-danger">{serverError}</p>}
         <Button type="submit" disabled={isSubmitting}>ثبت‌نام</Button>
       </form>
     </AuthCard>

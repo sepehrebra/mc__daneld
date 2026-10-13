@@ -1,16 +1,22 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import Logo from './Logo.jsx'
 import { BRAND } from '../config.js'
-import { isLoggedIn, clearToken } from '../auth.js'
+import { isLoggedIn } from '../auth.js'
+import { api } from '../api.js'
 
 export default function Navbar() {
   const navigate = useNavigate()
   useLocation() // با تغییر صفحه، وضعیت ورود دوباره بررسی می‌شود
   const loggedIn = isLoggedIn()
 
-  const logout = () => {
-    clearToken()
-    navigate('/login')
+  const logout = async () => {
+    try {
+      await api.logout()
+    } catch {
+      // Local session is cleared even when the server cannot be reached.
+    } finally {
+      navigate('/login')
+    }
   }
 
   return (

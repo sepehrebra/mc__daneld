@@ -22,7 +22,7 @@ export default function UpcomingTasks({ data, loading, error }) {
       <ul className="space-y-2">
         {tasks.map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 rounded-xl bg-bg px-3 py-3">
-            <span className="font-medium">{t.title}</span>
+            <Link to={`/operations/${t.id}`} className="font-medium text-primary">{t.title}</Link>
             <span className="shrink-0 rounded-lg bg-wheat/25 px-2.5 py-1 text-sm text-soil">
               {formatFa(t.date)}
             </span>

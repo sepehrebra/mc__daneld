@@ -1,56 +1,95 @@
-import { BASE_URL, USE_MOCK } from './config.js'
+import { BASE_URL } from './config.js'
 import { getToken, setToken, clearToken } from './auth.js'
-import { mockTasks, mockFarms } from './mock.js'
-
-// آدرس endpointهای جنگو: اگر با بک‌اند فرق داشت فقط همین‌جا عوض کن.
-const ENDPOINTS = {
-  login: '/auth/login/',
-  upcomingTasks: '/tasks/upcoming/?limit=3',
-  farms: '/farms/',
-  operations: '/operations/',
-}
-
-const wait = (data) => new Promise((res) => setTimeout(() => res(data), 400))
 
 async function request(path, { method = 'GET', body } = {}) {
   const token = getToken()
-  const res = await fetch(BASE_URL + path, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-    },
-    body: body && JSON.stringify(body),
-  })
+  let response
+  try {
+    response = await fetch(BASE_URL + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    })
+  } catch {
+    throw new Error('ارتباط با سرور برقرار نشد. اجرای بک‌اند را بررسی کن.')
+  }
 
-  if (res.status === 401) {
+  if (response.status === 401 && token) {
     clearToken()
     window.location.href = '/login'
-    throw new Error('دوباره وارد شو.')
+    throw new Error('نشست منقضی شده است. دوباره وارد شو.')
   }
-  if (!res.ok) throw new Error('مشکلی پیش آمد. دوباره تلاش کن.')
-  return res.status === 204 ? null : res.json()
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    const detail = Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail
+    throw new Error(typeof detail === 'string' ? detail : 'درخواست انجام نشد. دوباره تلاش کن.')
+  }
+  return response.status === 204 ? null : response.json()
 }
 
 export const api = {
-  // body: { phone, password }  ->  پاسخ: { access: "..." }
-  async login(body) {
-    if (USE_MOCK) {
-      setToken('mock-token')
-      return wait()
-    }
-    const data = await request(ENDPOINTS.login, { method: 'POST', body })
-    setToken(data.access)
+  async register({ name, phone, password }) {
+    return request('/auth/register', {
+      method: 'POST', body: { full_name: name.trim(), phone, password },
+    })
   },
 
-  // پاسخ: [{ id, title, date: "2026-10-07" }]
-  upcomingTasks: () =>
-    USE_MOCK ? wait(mockTasks) : request(ENDPOINTS.upcomingTasks),
+  async login({ phone, password }) {
+    const data = await request('/auth/login', { method: 'POST', body: { phone, password } })
+    setToken(data.access_token)
+    return data
+  },
 
-  // پاسخ: [{ id, name, plots: [{ id, name }] }]
-  farms: () => (USE_MOCK ? wait(mockFarms) : request(ENDPOINTS.farms)),
+  async logout() {
+    try {
+      if (getToken()) await request('/auth/logout', { method: 'POST' })
+    } finally {
+      clearToken()
+    }
+  },
 
-  // body: { name, start_date, end_date | null, farm, plot }
-  createOperation: (body) =>
-    USE_MOCK ? wait({ ...body, id: 1 }) : request(ENDPOINTS.operations, { method: 'POST', body }),
+  async farms() {
+    const farms = await request('/farms')
+    return Promise.all(farms.map(async (farm) => ({
+      ...farm,
+      plots: await request(`/farms/${farm.id}/plots`),
+    })))
+  },
+  createFarm: (body) => request('/farms', { method: 'POST', body }),
+  createPlot: (farmId, body) => request(`/farms/${farmId}/plots`, { method: 'POST', body }),
+  cropSeasons: (plotId) => request(`/plots/${plotId}/crop-seasons`),
+  createCropSeason: (plotId, body) => request(`/plots/${plotId}/crop-seasons`, { method: 'POST', body }),
+
+  operations: ({ plotId, dateFrom, dateTo } = {}) => {
+    const params = new URLSearchParams()
+    if (plotId) params.set('plot_id', plotId)
+    if (dateFrom) params.set('date_from', dateFrom)
+    if (dateTo) params.set('date_to', dateTo)
+    return request(`/operations${params.size ? `?${params}` : ''}`)
+  },
+  operation: (id) => request(`/operations/${id}`),
+  updateOperation: (id, body) => request(`/operations/${id}`, { method: 'PATCH', body }),
+  createOperation: (plotId, body) => request(`/plots/${plotId}/operations`, { method: 'POST', body }),
+  reminders: (operationId) => request(`/operations/${operationId}/reminders`),
+  createReminder: (operationId, body) =>
+    request(`/operations/${operationId}/reminders`, { method: 'POST', body }),
+
+  async upcomingTasks() {
+    const today = new Date()
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset())
+    const operations = await api.operations({ dateFrom: today.toISOString().slice(0, 10) })
+    return operations
+      .filter((operation) => ['planned', 'in_progress'].includes(operation.status))
+      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))
+      .slice(0, 3)
+      .map((operation) => ({
+        id: operation.id, title: operation.title, date: operation.scheduled_date,
+      }))
+  },
+
+  notifications: () => request('/notifications'),
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
 }
