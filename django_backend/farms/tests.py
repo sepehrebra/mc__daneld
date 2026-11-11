@@ -1,12 +1,16 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from secrets import token_urlsafe
+from unittest.mock import patch
 
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from accounts.authentication import token_digest
 from accounts.models import AuthSession, User
-from farms.models import Farm, Plot
+from farms.models import CropSeason, Farm, Plot
+from operations.models import Operation
 
 
 @override_settings(ALLOWED_HOSTS=["testserver"])
@@ -121,3 +125,114 @@ class FarmPlotAPITests(TestCase):
         self.assertEqual(self.call("get", "/api/v1/farms", token=token).json(), [{"id": farm.json()["id"], "name": "New farm", "plots": [{"id": plot.json()["id"], "name": "New plot"}]}])
         self.assertEqual(self.call("post", "/api/v1/auth/logout", {}, token).status_code, 204)
         self.assertEqual(self.call("get", "/api/v1/farms", token=token).status_code, 401)
+
+
+class FarmPlotDetailTests(TestCase):
+    setUpTestData = classmethod(FarmPlotAPITests.setUpTestData.__func__)
+    setUp = FarmPlotAPITests.setUp
+    create_token = FarmPlotAPITests.create_token
+    call = FarmPlotAPITests.call
+
+    def operation(self, **changes):
+        values = dict(plot=self.plot_a, created_by=self.user_a, title="Water", operation_type="irrigation",
+                      scheduled_date=date(2026, 1, 2))
+        values.update(changes)
+        return Operation.objects.create(**values)
+
+    def detail(self, kind="plots", pk=None):
+        pk = pk or (self.plot_a.pk if kind == "plots" else self.farm_a.pk)
+        response = self.call("get", f"/api/v1/{kind}/{pk}", token=self.token_a)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_empty_details_match_contract(self):
+        expected = dict(id=self.plot_a.pk, name="A plot", code="A1", area_m2=10.0,
+                        soil_type=None, description=None, today_count=0, overdue_count=0, current_season=None)
+        self.assertEqual(self.detail(), dict(expected, farm={"id": self.farm_a.pk, "name": "A farm"},
+                         last_done={"irrigation": None, "fertilizing": None, "spraying": None},
+                         next_operations=[], recent_operations=[]))
+        farm = self.detail("farms")
+        self.assertEqual(farm, dict(id=self.farm_a.pk, name="A farm", province=None, city=None,
+                         address=None, latitude=None, longitude=None, timezone="Asia/Tehran", description=None,
+                         plots=[dict(expected, next_operation=None, last_irrigation_at=None)]))
+
+    def test_counts_use_farm_day_and_exclude_closed_operations(self):
+        overdue = self.operation(scheduled_date=date(2026, 1, 1))
+        self.operation(status="in_progress")
+        self.operation(scheduled_date=date(2026, 1, 3))
+        self.operation(status="cancelled")
+        self.operation(status="completed", completed_at=datetime(2026, 1, 1, 20, tzinfo=dt_timezone.utc))
+        self.operation(plot=self.plot_b)
+        # UTC January 1 is already January 2 in Tehran, but January 1 in Los Angeles.
+        with patch("django.utils.timezone.now", return_value=datetime(2026, 1, 1, 22, tzinfo=dt_timezone.utc)):
+            for zone, counts in (("Asia/Tehran", (1, 1)), ("America/Los_Angeles", (1, 0))):
+                self.farm_a.timezone = zone
+                self.farm_a.save()
+                plot = self.detail()
+                summary = self.detail("farms")["plots"][0]
+                for item in (plot, summary):
+                    self.assertEqual((item["today_count"], item["overdue_count"]), counts)
+                self.assertEqual(summary["next_operation"], dict(id=overdue.pk, title="Water",
+                                 operation_type="irrigation", scheduled_date="2026-01-01", scheduled_time=None))
+                self.assertEqual(plot["next_operations"][0]["id"], overdue.pk)
+
+    def test_operation_limits_order_and_last_done(self):
+        future = self.operation(scheduled_date=date(2026, 1, 3))
+        late = self.operation(scheduled_time="09:00")
+        early = self.operation(scheduled_time="08:00")
+        tie = self.operation(scheduled_time="08:00")
+        done = []
+        for day, kind in ((1, "irrigation"), (2, "spraying"), (3, "fertilizing"), (4, "irrigation")):
+            done.append(self.operation(operation_type=kind, status="completed",
+                        completed_at=datetime(2026, 1, day, 8, tzinfo=dt_timezone.utc)))
+        self.operation(operation_type="spraying", status="cancelled")
+        data = self.detail()
+        self.assertEqual([x["id"] for x in data["next_operations"]], [early.pk, tie.pk, late.pk])
+        self.assertEqual([x["id"] for x in data["recent_operations"]], [done[3].pk, done[2].pk, done[1].pk])
+        self.assertEqual(data["last_done"], dict(irrigation="2026-01-04T08:00:00Z",
+                         fertilizing="2026-01-03T08:00:00Z", spraying="2026-01-02T08:00:00Z"))
+        self.assertEqual(self.detail("farms")["plots"][0]["last_irrigation_at"], "2026-01-04T08:00:00Z")
+        self.assertEqual(set(data["next_operations"][0]), {"id", "title", "operation_type", "description",
+                         "scheduled_date", "scheduled_time", "status", "completed_date", "farm", "plot"})
+
+    def test_current_season_prefers_active_then_newest_planned(self):
+        active = CropSeason.objects.create(plot=self.plot_a, crop_name="Wheat", start_date=date(2026, 1, 1),
+                                          actual_start_date=date(2026, 1, 2), status="active")
+        planned = CropSeason.objects.create(plot=self.plot_a, crop_name="Rice", start_date=date(2026, 5, 1))
+        newest = CropSeason.objects.create(plot=self.plot_a, crop_name="Corn", start_date=date(2026, 4, 1))
+        for kind in ("plots", "farms"):
+            data = self.detail(kind)
+            item = data if kind == "plots" else data["plots"][0]
+            self.assertEqual(item["current_season"], dict(crop_name="Wheat", variety=None,
+                             start_date="2026-01-01", actual_start_date="2026-01-02", status="active"))
+        active.status = "completed"
+        active.save()
+        # Imported planned rows may retain a historical actual start; creation still wins.
+        planned.actual_start_date = date(2026, 2, 1)
+        planned.save()
+        self.assertEqual(self.detail()["current_season"]["crop_name"], "Corn")
+        CropSeason.objects.filter(pk__in=[planned.pk, newest.pk]).update(status="cancelled")
+        self.assertIsNone(self.detail()["current_season"])
+
+    def test_details_require_auth_and_hide_foreign_and_missing_resources(self):
+        for kind, own, foreign in (("farms", self.farm_a.pk, self.farm_b.pk), ("plots", self.plot_a.pk, self.plot_b.pk)):
+            self.assertEqual(self.call("get", f"/api/v1/{kind}/{own}").status_code, 401)
+            for pk in (foreign, 999999):
+                self.assertEqual(self.call("get", f"/api/v1/{kind}/{pk}", token=self.token_a).status_code, 404)
+
+    def test_farm_query_count_does_not_grow_per_plot(self):
+        self.operation()
+        CropSeason.objects.create(plot=self.plot_a, crop_name="Wheat", start_date=date(2026, 1, 1))
+        with CaptureQueriesContext(connection) as small:
+            self.detail("farms")
+        ids = [self.plot_a.pk]
+        for index in range(8):
+            plot = Plot.objects.create(farm=self.farm_a, name=f"Extra {index}", area_m2=1)
+            ids.append(plot.pk)
+            self.operation(plot=plot)
+            CropSeason.objects.create(plot=plot, crop_name="Rice", start_date=date(2026, 1, 1))
+        with CaptureQueriesContext(connection) as large:
+            data = self.detail("farms")
+        self.assertEqual([plot["id"] for plot in data["plots"]], ids)
+        self.assertEqual(len(large), len(small))
+        self.assertLessEqual(len(large), 6)

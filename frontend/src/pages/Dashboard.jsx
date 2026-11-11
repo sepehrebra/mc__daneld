@@ -2,7 +2,6 @@ import UpcomingTasks from '../components/dashboard/UpcomingTasks.jsx'
 import OperationForm from '../components/dashboard/OperationForm.jsx'
 import FarmList from '../components/dashboard/FarmList.jsx'
 import OperationFilter from '../components/dashboard/OperationFilter.jsx'
-import Notifications from '../components/dashboard/Notifications.jsx'
 import useLoad from '../hooks/useLoad.js'
 import { api } from '../api.js'
 
@@ -17,7 +16,6 @@ export default function Dashboard() {
       <OperationForm farms={farms} />
       <FarmList {...farms} />
       <OperationFilter farms={farms} />
-      <Notifications />
     </main>
   )
 }

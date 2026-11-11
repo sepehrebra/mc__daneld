@@ -1,19 +1,21 @@
 import { BASE_URL } from './config.js'
 import { getToken, setToken, clearToken } from './auth.js'
 
-async function request(path, { method = 'GET', body } = {}) {
+async function request(path, { method = 'GET', body, signal } = {}) {
   const token = getToken()
   let response
   try {
     response = await fetch(BASE_URL + path, {
       method,
+      signal,
       headers: {
         'Content-Type': 'application/json',
         ...(token && { Authorization: `Bearer ${token}` }),
       },
       ...(body !== undefined && { body: JSON.stringify(body) }),
     })
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error
     throw new Error('ارتباط با سرور برقرار نشد. اجرای بک‌اند را بررسی کن.')
   }
 
@@ -51,45 +53,34 @@ export const api = {
     }
   },
 
-  async farms() {
-    const farms = await request('/farms')
-    return Promise.all(farms.map(async (farm) => ({
-      ...farm,
-      plots: await request(`/farms/${farm.id}/plots`),
-    })))
-  },
+  farms: () => request('/farms'),
+  farm: (id) => request(`/farms/${id}`),
   createFarm: (body) => request('/farms', { method: 'POST', body }),
   createPlot: (farmId, body) => request(`/farms/${farmId}/plots`, { method: 'POST', body }),
-  cropSeasons: (plotId) => request(`/plots/${plotId}/crop-seasons`),
-  createCropSeason: (plotId, body) => request(`/plots/${plotId}/crop-seasons`, { method: 'POST', body }),
 
-  operations: ({ plotId, dateFrom, dateTo } = {}) => {
+  operations: (filters = {}, signal) => {
     const params = new URLSearchParams()
-    if (plotId) params.set('plot_id', plotId)
-    if (dateFrom) params.set('date_from', dateFrom)
-    if (dateTo) params.set('date_to', dateTo)
-    return request(`/operations${params.size ? `?${params}` : ''}`)
+    for (const key of ['from', 'to', 'farm', 'plot', 'status', 'sort', 'order', 'limit', 'offset']) {
+      if (filters[key] != null && filters[key] !== '') params.set(key, filters[key])
+    }
+    return request(`/operations${params.size ? `?${params}` : ''}`, { signal })
   },
-  operation: (id) => request(`/operations/${id}`),
+  async operation(id, plot, signal) {
+    // The Django contract exposes individual items through the collection.
+    const limit = 100
+    for (let offset = 0; !signal?.aborted; offset += limit) {
+      const items = await api.operations({ plot, sort: 'created', limit, offset }, signal)
+      const item = items.find((operation) => String(operation.id) === String(id))
+      if (item) return item
+      if (items.length < limit) break
+    }
+    throw new Error('عملیات پیدا نشد.')
+  },
   updateOperation: (id, body) => request(`/operations/${id}`, { method: 'PATCH', body }),
-  createOperation: (plotId, body) => request(`/plots/${plotId}/operations`, { method: 'POST', body }),
-  reminders: (operationId) => request(`/operations/${operationId}/reminders`),
-  createReminder: (operationId, body) =>
-    request(`/operations/${operationId}/reminders`, { method: 'POST', body }),
+  createOperation: (plotId, body) => request('/operations', { method: 'POST', body: { ...body, plot_id: Number(plotId) } }),
 
   async upcomingTasks() {
-    const today = new Date()
-    today.setMinutes(today.getMinutes() - today.getTimezoneOffset())
-    const operations = await api.operations({ dateFrom: today.toISOString().slice(0, 10) })
-    return operations
-      .filter((operation) => ['planned', 'in_progress'].includes(operation.status))
-      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))
-      .slice(0, 3)
-      .map((operation) => ({
-        id: operation.id, title: operation.title, date: operation.scheduled_date,
-      }))
+    const operations = await api.operations({ status: 'planned,in_progress', order: 'asc', limit: 3 })
+    return operations.map(({ id, title, scheduled_date }) => ({ id, title, date: scheduled_date }))
   },
-
-  notifications: () => request('/notifications'),
-  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
 }

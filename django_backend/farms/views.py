@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.errors import Conflict
+from farms.details import farm_detail, plot_detail
 from farms.models import Farm, Plot
 from farms.serializers import FarmCreateSerializer, FarmResponseSerializer, FarmUpdateSerializer, PlotResponseSerializer, PlotWriteSerializer
 
@@ -48,6 +49,9 @@ class FarmCollectionView(PrivateView):
 
 
 class FarmUpdateView(PrivateView):
+    def get(self, request, farm_id):
+        return Response(farm_detail(owned_farm(request.user, farm_id)))
+
     def patch(self, request, farm_id):
         farm = owned_farm(request.user, farm_id)
         serializer = FarmUpdateSerializer(data=request.data, partial=True)
@@ -76,6 +80,9 @@ class PlotCreateView(PrivateView):
 
 
 class PlotUpdateView(PrivateView):
+    def get(self, request, plot_id):
+        return Response(plot_detail(owned_plot(request.user, plot_id)))
+
     def patch(self, request, plot_id):
         plot = owned_plot(request.user, plot_id)
         serializer = PlotWriteSerializer(data=request.data, partial=True)

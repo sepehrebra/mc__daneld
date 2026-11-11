@@ -130,6 +130,7 @@ class OperationDetailView(PrivateView):
             serializer.is_valid(raise_exception=True)
             values = dict(serializer.validated_data)
             previous_status = operation.status
+            previous_scheduled_date = operation.scheduled_date
             previous_type = operation.operation_type
             season = (CropSeason.objects.select_for_update().filter(pk=operation.crop_season_id).first()
                       if operation.crop_season_id else None)
@@ -187,6 +188,12 @@ class OperationDetailView(PrivateView):
                     save_season(season)
             if serializer.validated_data:
                 operation.save()
+                if (operation.scheduled_date != previous_scheduled_date or
+                        (operation.status != previous_status and operation.status in ("completed", "cancelled"))):
+                    # Processing/failed reminders without sent_at have not been delivered.
+                    operation.reminders.filter(
+                        status__in=("pending", "processing", "failed"), sent_at__isnull=True,
+                    ).update(status="cancelled", updated_at=timezone.now())
         return Response(OperationResponseSerializer(operation).data)
 
     def delete(self, request, operation_id):

@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
+from django.db.models.query import QuerySet
+from django.db.models.signals import post_delete
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError as APIValidationError
@@ -408,6 +410,121 @@ class OperationWriteAPITests(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Operation.objects.filter(pk=pk).exists())
         self.assertFalse(Reminder.objects.filter(operation_id=pk).exists())
+
+
+class OperationReminderTests(TestCase):
+    setUpTestData = classmethod(OperationWriteAPITests.setUpTestData.__func__)
+    setUp = OperationWriteAPITests.setUp
+    make_token = OperationWriteAPITests.make_token
+    request_json = OperationWriteAPITests.request_json
+    create = OperationWriteAPITests.create
+    change = OperationWriteAPITests.change
+
+    def reminder(self, operation, status="pending", **changes):
+        values = dict(operation=operation, recipient=self.user, remind_at=timezone.now(), status=status,
+                      last_error="private delivery failure")
+        values.update(changes)
+        return Reminder.objects.create(**values)
+
+    def test_date_change_completion_and_cancellation_cancel_only_unsent(self):
+        for payload in ({"scheduled_date": "2026-02-01"}, {"status": "completed"}, {"status": "cancelled"}):
+            with self.subTest(payload=payload):
+                operation = Operation.objects.get(pk=self.create().json()["id"])
+                reminders = [self.reminder(operation, status) for status in ("pending", "processing", "failed", "sent", "cancelled")]
+                delivered = self.reminder(operation, "processing", sent_at=timezone.now())
+                untouched = self.reminder(Operation.objects.get(pk=self.create().json()["id"]))
+                old_time = timezone.now() - timedelta(days=1)
+                Reminder.objects.filter(pk__in=[r.pk for r in reminders]).update(updated_at=old_time)
+                response = self.change(operation.pk, payload)
+                self.assertEqual(response.status_code, 200)
+                for reminder, expected in zip(reminders, ("cancelled", "cancelled", "cancelled", "sent", "cancelled")):
+                    reminder.refresh_from_db()
+                    self.assertEqual(reminder.status, expected)
+                self.assertGreater(reminders[0].updated_at, old_time)
+                delivered.refresh_from_db()
+                untouched.refresh_from_db()
+                self.assertEqual((delivered.status, untouched.status), ("processing", "pending"))
+                self.assertEqual(operation.reminders.count(), 6)  # No automatic replacement.
+
+    def test_unrelated_edits_and_identical_date_preserve_reminders(self):
+        operation = Operation.objects.get(pk=self.create().json()["id"])
+        reminder = self.reminder(operation)
+        for payload in ({}, {"title": "Edited"}, {"scheduled_date": "2026-01-01"},
+                        {"scheduled_time": "09:00"}, {"status": "in_progress"}):
+            self.assertEqual(self.change(operation.pk, payload).status_code, 200)
+            reminder.refresh_from_db()
+            self.assertEqual(reminder.status, "pending")
+
+    def test_reopening_does_not_reactivate_or_replace_cancelled_reminders(self):
+        operation = Operation.objects.get(pk=self.create().json()["id"])
+        reminder = self.reminder(operation)
+        self.assertEqual(self.change(operation.pk, {"status": "completed"}).status_code, 200)
+        self.assertEqual(self.change(operation.pk, {"status": "planned"}).status_code, 200)
+        reminder.refresh_from_db()
+        self.assertEqual(reminder.status, "cancelled")
+        self.assertEqual(operation.reminders.count(), 1)
+
+    def test_reminder_failure_rolls_back_operation_season_and_reminders(self):
+        operation = Operation.objects.get(pk=self.create(operation_type="planting", crop_name="Wheat").json()["id"])
+        reminder = self.reminder(operation)
+        real_update = QuerySet.update
+
+        def fail_after_reminder_update(queryset, **values):
+            result = real_update(queryset, **values)
+            if queryset.model is Reminder:
+                raise APIValidationError("Simulated persistence failure")
+            return result
+
+        with patch.object(QuerySet, "update", fail_after_reminder_update):
+            response = self.change(operation.pk, {"status": "completed", "completed_date": "2026-02-01"})
+        self.assertEqual(response.status_code, 422)
+        operation.refresh_from_db()
+        reminder.refresh_from_db()
+        self.assertEqual((operation.status, operation.completed_at, reminder.status), ("planned", None, "pending"))
+        self.assertEqual((operation.crop_season.status, operation.crop_season.actual_start_date), ("planned", None))
+
+    def test_invalid_or_foreign_updates_leave_reminders_unchanged(self):
+        operation = Operation.objects.get(pk=self.create().json()["id"])
+        reminder = self.reminder(operation)
+        self.assertEqual(self.change(operation.pk, {"scheduled_date": "invalid"}).status_code, 422)
+        self.assertEqual(self.change(operation.pk, {"status": "completed"}, token=self.other_token).status_code, 404)
+        self.assertEqual(self.request_json("delete", f"/api/v1/operations/{operation.pk}", token=self.other_token).status_code, 404)
+        reminder.refresh_from_db()
+        self.assertEqual(reminder.status, "pending")
+
+    def test_delete_removes_all_reminders_and_rolls_back_on_failure(self):
+        operation = Operation.objects.get(pk=self.create().json()["id"])
+        for status, _ in Reminder.STATUSES:
+            self.reminder(operation, status)
+
+        def fail_delete(sender, instance, **kwargs):
+            raise APIValidationError("Simulated delete failure")
+
+        post_delete.connect(fail_delete, sender=Operation)
+        try:
+            response = self.request_json("delete", f"/api/v1/operations/{operation.pk}", token=self.token)
+            self.assertEqual(response.status_code, 422)
+        finally:
+            post_delete.disconnect(fail_delete, sender=Operation)
+        self.assertTrue(Operation.objects.filter(pk=operation.pk).exists())
+        self.assertEqual(operation.reminders.count(), 5)
+        response = self.request_json("delete", f"/api/v1/operations/{operation.pk}", token=self.token)
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Reminder.objects.filter(operation_id=operation.pk).exists())
+
+    def test_recipient_is_owner_and_private_delivery_errors_are_not_exposed(self):
+        operation = Operation.objects.get(pk=self.create().json()["id"])
+        with self.assertRaises(ValidationError):
+            self.reminder(operation, recipient=self.other_user)
+        self.reminder(operation)
+        response = self.change(operation.pk, {"scheduled_date": "2026-02-01"})
+        responses = [response] + [self.request_json("get", url, token=self.token) for url in (
+            "/api/v1/operations", "/api/v1/operations/calendar?from=2026-02-01&to=2026-02-28",
+            f"/api/v1/farms/{self.farm.pk}", f"/api/v1/plots/{self.plot.pk}")]
+        for response in responses:
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn(b"last_error", response.content)
+            self.assertNotIn(b"private delivery failure", response.content)
 
 
 class OperationListAndCalendarAPITests(TestCase):
