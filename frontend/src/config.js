@@ -9,4 +9,4 @@ export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/a
 
 // true = داده‌های آزمایشی نمایش داده می‌شود (بدون بک‌اند).
 // وقتی بک‌اند آماده شد، false کن.
-export const USE_MOCK = true
+export const USE_MOCK = false

@@ -98,8 +98,8 @@ function PlotDetailView({ id }) {
 
       <Card title="وضعیت کنونی">
         <div className="mb-5 grid grid-cols-2 gap-3">
-          <Stat value={p.today_count} label="اقدام امروز" hint="در انتظار انجام" className="bg-due/15 text-soil" />
-          <Stat value={p.overdue_count} label="عقب‌افتاده" hint="موعد گذشته، انجام‌نشده" className="bg-late/10 text-late" />
+          <Stat value={p.today_count} label="اقدام امروز" hint="در انتظار انجام" className="text-soil" />
+          <Stat value={p.overdue_count} label="عقب‌افتاده" hint="موعد گذشته، انجام‌نشده" className="text-late" />
         </div>
         <InfoRows rows={status} />
       </Card>

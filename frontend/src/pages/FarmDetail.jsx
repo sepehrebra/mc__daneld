@@ -76,13 +76,13 @@ function FarmDetailView({ id }) {
             value={sum(plots, (p) => p.today_count)}
             label="اقدام امروز"
             hint="در انتظار انجام"
-            className="bg-due/15 text-soil"
+            className="text-soil"
           />
           <Stat
             value={sum(plots, (p) => p.overdue_count)}
             label="عقب‌افتاده"
             hint="موعد گذشته، انجام‌نشده"
-            className="bg-late/10 text-late"
+            className="text-late"
           />
         </div>
       </Card>
