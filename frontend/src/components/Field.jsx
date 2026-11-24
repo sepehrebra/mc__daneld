@@ -14,17 +14,17 @@ const Field = forwardRef(function Field({ label, error, type = 'text', ...props 
         <input
           ref={ref}
           type={isPassword && show ? 'text' : type}
-          className={`h-12 w-full rounded-xl border bg-surface px-3 text-base outline-none transition
-            focus:border-primary focus:ring-2 focus:ring-wheat/60
-            ${error ? 'border-danger' : 'border-line'}
-            ${isPassword ? 'ps-3 pe-11' : ''}`}
+          className={`h-12 w-full rounded-xl border bg-surface text-base outline-none transition
+  focus:border-primary focus:ring-2 focus:ring-wheat/60
+  ${error ? 'border-danger' : 'border-line'}
+  ${isPassword ? 'pl-3 pr-11' : 'px-3'}`}
           {...props}
         />
         {isPassword && (
           <button
             type="button"
             onClick={() => setShow((s) => !s)}
-            className="absolute inset-y-0 end-0 flex w-11 items-center justify-center text-muted"
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted"
             aria-label={show ? 'مخفی کردن رمز' : 'نمایش رمز'}
           >
             {show ? <EyeOff size={18} /> : <Eye size={18} />}
