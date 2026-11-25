@@ -30,18 +30,24 @@ services:
         VITE_API_URL: /api/v1
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"            # HTTP/3
-    volumes:
-      - caddy_data:/data         # TLS certificates, must persist
-      - caddy_config:/config
+    # No published ports any more: the shared edge Caddy (separate project) owns 80/443,
+    # terminates TLS and forwards plain HTTP to this container.
+    expose:
+      - "80"
+    networks:
+      default: {}                # talks to its own backend (name "backend" stays private to this project)
+      edge:
+        aliases:
+          # Must be unique per instance (clean vs demo), otherwise the edge cannot tell them apart.
+          - ${EDGE_ALIAS:?set EDGE_ALIAS in .env}
     depends_on:
       - backend
     restart: unless-stopped
 
+# Only "web" joins the shared network; "backend" never does, so two instances cannot reach each other's API.
+networks:
+  edge:
+    external: true               # created once on the server: docker network create edge
+
 volumes:
   db_data:
-  caddy_data:
-  caddy_config:
